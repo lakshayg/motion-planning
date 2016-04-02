@@ -1,0 +1,40 @@
+#+TITLE: Literature Survey Notes
+#+AUTHOR: Lakshay Garg
+#+DATE:
+
+* Inroduction
+Heuristic searches such as A* are known for their generality, theoretical guarantees on suboptimality and simple implementation but have not been used for prolems with a large number of joints due to their high dimensionality. The paper by Cohen et al. [Cohen2010] solves this problem by constructing a graph using motion primitives as atomic actions. This graph is sparser compared to the N dimensional grid formed by discretizing the joint angles. Fast to compute heuristics are then used to guide graph search in promising direction.
+
+The main components of the approach are:
+- Graph representation of the problem
+- Graph search
+- Heuristic used for guiding search
+
+* Graph Representation
+The graph employed in this method is represented as $G = (S, E)$ where $S$ is the set of discretized joint configurations and $E$ is the set of feasible motion primitives. Any state $s \in S$ is represented as a $n+1$ tuple $(\theta_1, \theta_2, \ldots, \theta_n, m)$ where $\theta_i$ represents the angle of $n^{th}$ joint and $m$ represents the index of motion primitive used to reach state $s$. $m$ is used for path smoothing.
+
+A motion primitive is represented as a vector of joint velocities $(v_0, v_1, \ldots, v_n)$ for all joints in the manipulator. The set of primitives is the set of the smallest possible motions that can be performed at ant given state. Therefore a primitive is the difference in the global joint angles of neighboring states.
+
+/This set is the same for any state at which it is executed which allows us to pre-evaluate and pre-compute motion primitives offline/ [Why?]
+
+* Graph Search
+A graph search is performed in order to come up with a low-cost path as the motion plan. A cost function is used for this purpose which penalizes the path based on its length, smoothness and distance from obstacles.
+
+$$c(s, s') = c_{cell}(s') + w_{action}\cdot c_{action}(s,s') + w_{smooth}\cdot c_{smooth}(s,s')$$
+
+- $c_{cell}(s')$ is computed by taking the minimum distance between the manipulator and the nearest obstacle
+- $c_{action}(s,s')$ is the cost assigned to each motion primitive
+- $c_{smooth}$ is used to penalize choppy motion
+
+* Heuristic
+The heuristic uses results from a simplified search problem to guide the actual search in promising direction. In order for the heuristic $h$ to be admissible and consistent it must satisfy certain conditions:
+- $h(s_{goal}) = 0$
+- for every pair of states $s$, $s'$ such that $s'$ is an end state of action executed at state $s$, $h(s) \le c(s,s')  + h(s')$ [Why?]
+
+$$h(s) = h_{xyz}(s) + w\cdot h_{rpy}(s)$$ where $h_{xyz}$ and $h_{rpy}$ are the cost for desired end effector position / orientation
+
+The procedure for calculating $h_{xyz}$ is as follows:
+- Compute the coordinates of end effector for a state $s$
+- Compute cost-to-goal for these coordinates using 3D Dijkstra's search
+
+$h_{rpy}$ is equal to the angle of rotation about a fixed axis specified by axis-angle representation of the rotation between the end effector orientation of state $s$ and $s_{goal}$
