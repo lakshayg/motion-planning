@@ -1,23 +1,33 @@
 #+TITLE: Literature Survey Notes
 #+AUTHOR: Lakshay Garg
-#+DATE:
+#+LATEX_HEADER: \usepackage{parskip,amsmath}
+#+LATEX_HEADER: \hypersetup{colorlinks,linkcolor=black}
 
-* Inroduction
-Heuristic searches such as A* are known for their generality, theoretical guarantees on suboptimality and simple implementation but have not been used for prolems with a large number of joints due to their high dimensionality. The paper by Cohen et al. [Cohen2010] solves this problem by constructing a graph using motion primitives as atomic actions. This graph is sparser compared to the N dimensional grid formed by discretizing the joint angles. Fast to compute heuristics are then used to guide graph search in promising direction.
+* Motion Planning with Motion Primitives
 
+Heuristic searches such as A* are known for their generality, theoretical guarantees on suboptimality and simple implementation but have not been used for problems with a large number of joints due to their high dimensionality. The paper by Cohen et al. [Cohen2010] solves this problem by constructing a graph using motion primitives as atomic actions. This graph is sparser compared to the N dimensional grid formed by discretizing the joint angles. Fast to compute heuristics are then used to guide graph search in promising direction.
+
+** Why not sampling based approach?
+The most common approaches to motion planning currently utilize sampling based methods such as RRT and PRM. They have been shown to solve problems with high dimensionality consistently.
+
+The problem lies in the fact that the sampling based planners by themselves do not enforce any form of solution optimization. Searching for a path can result in solutions of unpredictable length, superfluous motions and with motions that graze the obstacles. Trajectory smoothing is helpful in these cases but may fail to help in cluttered environments.
+
+Also, sampling based approaches do not generate consistent solutions due to randomization (solution may be different every time the algorithm is run).
+
+** Algorithm
 The main components of the approach are:
 - Graph representation of the problem
 - Graph search
 - Heuristic used for guiding search
 
-* Graph Representation
+*** Graph Representation
 The graph employed in this method is represented as $G = (S, E)$ where $S$ is the set of discretized joint configurations and $E$ is the set of feasible motion primitives. Any state $s \in S$ is represented as a $n+1$ tuple $(\theta_1, \theta_2, \ldots, \theta_n, m)$ where $\theta_i$ represents the angle of $n^{th}$ joint and $m$ represents the index of motion primitive used to reach state $s$. $m$ is used for path smoothing.
 
-A motion primitive is represented as a vector of joint velocities $(v_0, v_1, \ldots, v_n)$ for all joints in the manipulator. The set of primitives is the set of the smallest possible motions that can be performed at ant given state. Therefore a primitive is the difference in the global joint angles of neighboring states.
+A motion primitive is represented as a vector of joint velocities $(v_0, v_1, \ldots, v_n)$ for all joints in the manipulator. The set of primitives is the set of the smallest possible motions that can be performed at any given state. Therefore a primitive is the difference in the global joint angles of neighboring states.
 
 /This set is the same for any state at which it is executed which allows us to pre-evaluate and pre-compute motion primitives offline/ [Why?]
 
-* Graph Search
+*** Graph Search
 A graph search is performed in order to come up with a low-cost path as the motion plan. A cost function is used for this purpose which penalizes the path based on its length, smoothness and distance from obstacles.
 
 $$c(s, s') = c_{cell}(s') + w_{action}\cdot c_{action}(s,s') + w_{smooth}\cdot c_{smooth}(s,s')$$
@@ -26,7 +36,7 @@ $$c(s, s') = c_{cell}(s') + w_{action}\cdot c_{action}(s,s') + w_{smooth}\cdot c
 - $c_{action}(s,s')$ is the cost assigned to each motion primitive
 - $c_{smooth}$ is used to penalize choppy motion
 
-* Heuristic
+*** Heuristic
 The heuristic uses results from a simplified search problem to guide the actual search in promising direction. In order for the heuristic $h$ to be admissible and consistent it must satisfy certain conditions:
 - $h(s_{goal}) = 0$
 - for every pair of states $s$, $s'$ such that $s'$ is an end state of action executed at state $s$, $h(s) \le c(s,s')  + h(s')$ [Why?]
@@ -38,3 +48,76 @@ The procedure for calculating $h_{xyz}$ is as follows:
 - Compute cost-to-goal for these coordinates using 3D Dijkstra's search
 
 $h_{rpy}$ is equal to the angle of rotation about a fixed axis specified by axis-angle representation of the rotation between the end effector orientation of state $s$ and $s_{goal}$
+
+** Achievements and Limitations
+The proposed method is based on a search based approach which has the following key advantages:
+- Solution can be optimized by using a suitable cost function
+- Theoretical guarantees on suboptimality and completeness
+- It provides consistent solutions
+
+But due to the high dimensionality of the planning problem, the planner does not show much success in planning for a 6-DOF pose $(x, y, z, r, p, y)$ and is not as efficient as sampling based approaches in terms of the time required for computing the trajectory.
+
+** Analysis
+As this method uses pre-defined motion primitives, it is possible that the planner is unable to find a path due to the search grid being too coarse for the application.
+
+The heuristic function which is used in guiding graph search can produce paths which do not satisfy the kinodynamic constraints of the robot thus rendering the generated solution to be not of any use.
+
+* Using Adaptive Motion Primitives
+
+The motion planner based on a fixed set of motion primitives could frequently solve manipulation in cluttered spaces by generating consistent low-cost trajectories while providing bounds on suboptimality. But the planner lacks the efficiency of sampling based approaches. The authors build upon the concepts used in [Cohen2010] to come up with a motion planner which uses a set of adaptive motion primitives and on-the-fly motions generated by analytical solvers.
+
+** Improvements over pre-defined primitives
+- On-the-fly motions are generated to reach the goal constraints. This eliminates the problem of the search grid being too coarse.
+- Pre-defined motion primitives have variable dimensionality because not all joints are required when planning for motion with a high DoF manipulator. This improves the efficiency of search.
+- A new heuristic function is used which takes into account the kinematic complexities of the manipulator.
+
+** Algorithm
+Similar to the method utilized earlier, this too has the same basic components, namely i) graph construction ii) graph search and iii) heuristic function.
+
+*** Graph Construction
+The state of the robot $s$ is represented as an $n$-tuple $(\theta_1, \theta_2, \ldots, \theta_n)$ for a manipulator with $n$ joints. A motion primitive is defined as a vector of joint velocities $(v_1, v_2, \ldots, v_n)$. The different kinds of motion primitives used are described below:
+- /Static Motion Primitives with Variable Dimensionality/ - These are similar to the motion primitives used in the earlier approach and contain eight 4D and fourteed 7D motion primitives. They are used when searching over a coarse lattice.
+- /Inverse Kinematics Based Motion Primitives/ - These are motion primitives which are generated on-the-fly when the end effector is within a pre-defined distance from the goal position. These are generated using an /inverse kinematics solver/.
+- /Orientation Solver Based Motion Primitives/ - These are motion primitives whe the end-effector is at the goal position. They are generated by an orientation solver which computes motion required to reach the desired roll, pitch and yaw without moving the end effector out of position.
+
+*** Cost function
+The cost function is identical to the one used in earlier approach
+
+* Minimum Snap Trajectory Generation for Quads
+
+The paper by Mellinger and Kumar [Mellinger2012] addresses the problem of generation of optimal trajectories, while ensuring safe passage through specified corridors and satisfying constraints on velocities, accelerations and inputs. The authors address the controller design and trajectory generation for a quadcopter maneuvering in 3-dimensions in a tightly constrained setting of indoor environments.
+
+The authors describe the system model, quadrotor dynamics and controller design in great detail. As our prime focus is on the motion planning aspect of the problem, I do not go into the details of these topics and summarize only the trajectory generation part.
+
+** Trajectory Generation
+The trajectory of the quad is defined as a path that transitions smoothly through $m$ /keyframes/ (specified as $[x,y,z,\psi]^T$) at specified times. It is written as piecewise polynomial functions of order $n$ over $m$ time intervals.
+
+\[
+  \sigma_T(t) = 
+  \begin{cases}
+    \Sigma_{i=0}^n\sigma_T_{i1} t^i & t_0 \le t < t_1 \\
+    \Sigma_{i=0}^n\sigma_T_{i2} t^i & t_1 \le t < t_2 \\
+    \hspace{1cm} \vdots \\
+    \Sigma_{i=0}^n\sigma_T_{im} t^i & t_{m-1} \le t < t_m
+  \end{cases}
+\]
+
+*** TODO Describe how to find the unknowns
+
+** An Example
+
+To illustrate the process of obtaining $\sigma_T(t)$, consider the following simplified example. Assume that we need to plan a path using snap minimization in 2-dimensional space, i.e. $\sigma_T(t) = [x_T(t)\;y_T(t)]^T$ where $x(t)$ and $y(t)$ are piecewise polynomials themselves. Define $\sigma_T(t)$ as follows:
+
+\[
+  \sigma_T(t) = 
+  \begin{cases}
+    \sigma_1(t) & t_0 \le t < t_1 \\
+    \sigma_2(t) & t_1 \le t < t_2 \\
+    \hspace{3mm} \vdots \\
+    \sigma_m(t) & t_{m-1} \le t < t_m
+  \end{cases}
+\]
+
+where $\sigma_k(t) = \Sigma_{i=0}^n \sigma_{ki}t^i$ and $\sigma_{ki} = [x_{ki}\;y_{ki}]^T$.
+
+*** TODO Complete the example
