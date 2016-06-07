@@ -19,9 +19,6 @@ program main
         do j=1,9
             do x=-1,1
                 do y=-1,1
-                    print "(a)", 'Problem description:'
-                    print "(a,2f8.3)", 'Displacement: ', [1.*x, 1.*y]
-                    print "(a,2f8.3,4x,2f8.3)", 'Velocities at boundaries: ', vel(:,i), vel(:,j)
                     call primitive([1.*x,1.*y], vel(:,i), vel(:,j), [2.5,2.5])
                 end do
             end do

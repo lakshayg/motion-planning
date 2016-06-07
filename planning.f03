@@ -2,6 +2,7 @@ module planning
     implicit none
     real, parameter :: pi = 4. * atan(1.)
     real, parameter :: deg = pi/180.
+    logical, parameter :: logging = .false.
 
 contains
 
@@ -11,20 +12,19 @@ contains
     !   v_start      -- starting velocity
     !   v_end        -- ending velocity
     !   v_max        -- maximum permitted velocity
-    ! OUTPUTS:
-    !   poly         -- best fit cubic polynomial for given conditions
-    !   time         -- time required for executing this primitive
     subroutine primitive(displacement, v_start, v_end, v_max)
         real, dimension(:), intent(in) :: displacement, v_start, v_end, v_max
+        real, dimension(:,:), allocatable :: p
         real :: time
-        integer :: dof, i
+        integer :: dof, i, j
         dof = size(displacement)
+
         ! it is assumed that the dimensions of arrays are consistent
         ! TODO: write checks for ensuring that this condition is met
         
         ! check if the input is consistent
         if (any(abs(v_start) > v_max) .or. any(abs(v_end) > v_max)) then
-            print "(a)", 'Inconsistent inputs: Boundary conditions violate the velocity constraint'
+            if (logging) print "(a)", 'Inconsistent inputs: Boundary conditions violate the velocity constraint'
             return
         end if
 
@@ -36,10 +36,39 @@ contains
         ! the value of velocity is min/max at t = -T2/(3*T3)
         ! assuming this always lies in the interval [0,T]
         ! TODO: check if this assumption is valid and can be used safely
+        time = -1.
         do i=1,dof
-            print *, bisection_search(displacement(i), v_start(i), v_end(i), v_max(i))
+            ! TODO: Handle the case when displacement = 0 by considering higher order system
+            if (abs(displacement(i)) < 1e-2) then  ! when the displacement is ZERO
+                if (v_start(i) .eq. v_end(i)) then ! if initial and final conditions are same
+                    time = max(time, 0.)           ! no motion is needed
+                else                               ! when INFINITE acceleration is required
+                    return
+                end if
+            else
+                time = max(time, bisection_search(displacement(i), v_start(i), v_end(i), v_max(i)))
+            end if
+        end do
+
+        ! generate motion primitive by fitting a cubic to the path (quadratic in velocity)
+        allocate(p(dof,3))
+        do i=1,dof
+            p(i,1) = v_start(i)
+            p(i,2) = 2.*(3.*displacement(i)/(time**2) - (2.*v_start(i)+v_end(i))/time)
+            p(i,3) = 3.*(-2.*displacement(i)/(time**3) + (v_start(i)+v_end(i))/(time**2))
+        end do
+
+        print "(a)", 'Motion primitive:'
+        print "(a,2x,f8.3)", 'Duration:', time
+        print "(a,2x,2f8.3)", 'Displacement:', displacement
+        print "(a,2x,a,2f8.3,a,2x,a,2f8.3,a)", 'Start/End velocities:','[',v_start,']', '[',v_end,']'
+        print "(a)", 'Velocity command:'
+        do i=1,dof
+            print "(3f8.3)", (p(i,j),j=1,3) 
         end do
         print *, ""
+
+        deallocate(p)
 
     end subroutine primitive
 
@@ -68,39 +97,26 @@ contains
         ! the maximum velocity achieved in the motion primitive does
         ! not exceed the maximum allowed speed of the arm joints
         do i=1,max_iter
-            ! TODO: Handle the case when displacement = 0 by considering higher order system
-            if (abs(disp) < 1e-2) then
-                if (td0 .eq. td1) then
-                    print "(a)", 'Identical start and end conditions, ZERO time required'
-                    bisection_search = 0.
-                    return
-                else if (td0 .ne. td1) then
-                    print "(a)", 'Motion primitive requires INFINITE acceleration, skipping'
-                    bisection_search = -1.
-                    return
-                end if
-            end if
-
             t = 0.5 * (t_lo + t_hi)
             tmp  = abs(td0 - (1./3)*((3.*disp- t * (2.*td0+td1))**2)/(-2.* t * disp + t * t * (td0 + td1))) - vmax
             tmp1 = abs(td0 - (1./3)*((3.*disp-t_lo*(2.*td0+td1))**2)/(-2.*t_lo*disp + t_lo*t_lo*(td0+td1))) - vmax
             tmp2 = abs(td0 - (1./3)*((3.*disp-t_hi*(2.*td0+td1))**2)/(-2.*t_hi*disp + t_hi*t_hi*(td0+td1))) - vmax
             ! this condition will get triggered only on the very first iteration
             if (tmp1 * tmp2 > 0) then
-                print *, 'Solution bracket lost, returning with an error value'
+                if (logging) print *, 'Solution bracket lost, returning with an error value'
                 bisection_search = -1.
                 return
             end if
             if (tmp*tmp1 >= 0) t_lo = t
             if (tmp*tmp2 >= 0) t_hi = t
             if (t_hi - t_lo < eps) then
-                print *, 'Bisection converged after ',i,' iterations'
+                if (logging) print *, 'Bisection converged after ',i,' iterations'
                 exit
             end if
         end do
 
         ! inform user if the interation has not yet converged
-        if (i .eq. max_iter) then
+        if ((i .eq. max_iter) .and. logging) then
             print *, 'Iteration limit hit before the solution converged'
         end if
 
