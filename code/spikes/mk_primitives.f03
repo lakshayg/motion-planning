@@ -48,18 +48,18 @@ program mk_primitives
             v(:,2:99) = (path(:,3:100) - path(:,1:98))/(2.*step)
             v(:,100) = vel(:,j)
 
-            !if (n_primitive .eq. 1) then
-                !x = L(1) * cos(path(1,:)) + L(2) * cos(path(2,:)+path(1,:))
-                !y = L(1) * sin(path(1,:)) + L(2) * sin(path(2,:)+path(1,:))
-                !do k=1,100
-                    !print "(2f8.3)", x(k), y(k)
-                !end do
-            !end if
+            if (n_primitive .eq. 4) then
+                x = L(1) * cos(path(1,:)) + L(2) * cos(path(2,:)+path(1,:))
+                y = L(1) * sin(path(1,:)) + L(2) * sin(path(2,:)+path(1,:))
+                do k=1,100
+                    print "(2f8.3)", x(k), y(k)
+                end do
+            end if
             n_primitive = n_primitive + 1
         end do
     end do
 
-    print "(a,4x,i4)", 'number of primitives:', n_primitive
+    !print "(a,4x,i4)", 'number of primitives:', n_primitive
 
 contains
 
