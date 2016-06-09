@@ -55,19 +55,25 @@ void primitive(int dof, double disp[], double v_start[], double v_end[], double 
 	// determine the duration of motion primitive
 	time = -1.;
 	for (i = 0; i < dof; ++i) {
-		// TODO: the case when displacement is ZERO has not been handled
+		// TODO: the case when displacement is ZERO has not been handled properly
 		if (abs(disp[i]) < eps) {
-			if (v_start[i] == v_end[i])
+			if (log) printf("Displacement required for joint is ZERO\n");
+			if (v_start[i] == v_end[i]) {
 				time = max(time, 0);
-			else
-				return; // cannot generate a motion primitive with INFINITE acceleration
+			}
+			else {
+				if (log) printf("Cannot generate a motion primitive with INFINITE acceleration\n");
+				return;
+			}
 		}
 		else {
 			time = max(time, bisection_search(disp[i], v_start[i], v_end[i], v_max[i]));
 		}
 	}
 	if (time < teps) {
-		if (log) printf("Cannot generate motion primitive, time duration too small");
+		// this case may occur if bisection_search fails to find a solution
+		// or if no motion is required for meeting the provided conditions
+		if (log) printf("Cannot generate motion primitive, time duration too small\n");
 		return;
 	}
 
@@ -94,7 +100,8 @@ void primitive(int dof, double disp[], double v_start[], double v_end[], double 
 double f(double disp, double td0, double td1, double tdm, double t) {
 	double a = 3*disp - (2*td0 + td1)*t;
 	double b = -2*disp*t + (td0 + td1)*t*t;
-	return abs(td0 - (a*a)/(3*b)) - tdm;
+	double c = td0 - (a*a)/(3*b);
+	return abs(c) - tdm;
 }
 
 double bisection_search(double ds, double td0, double td1, double tdm) {
