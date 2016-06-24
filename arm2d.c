@@ -5,13 +5,26 @@
 #define max(a,b) ((a)>(b)?(a):(b))
 #define abs(x) ((x)>0?(x):(-(x)))
 #define DOF 2
+#define MAX_PRIM 500
 
-void primitive(int dof, double disp[], double v_start[], double v_end[], double v_max[]);
+typedef struct {
+	double disp[DOF];   // displacement caused by the primitive
+	double vel[DOF][2]; // start and end velocities for each DoF
+	double cmd[DOF][3]; // quadratic representing velocity of joints 1 and 2
+	double time;        // duration of motion primitive
+	double length;      // path length
+} Mprim;
+
+int n_primitives = 0;
+Mprim primitives[MAX_PRIM];
+
+void primitive(double disp[], double v_start[], double v_end[], double v_max[]);
 double bisection_search(double ds, double td0, double td1, double tdm);
+void print(Mprim *m);
 
 int main() {
-	double vel[9][DOF];                // allowed joint velocities
-	double disp[DOF];                            // array for storing displacements
+	double vel[9][DOF];                 // allowed joint velocities
+	double disp[DOF];                   // array for storing displacements
 	double v_max[DOF] = {2.5, 2.5};
 	int i, j, x, y;
 
@@ -26,11 +39,31 @@ int main() {
 			for (x = -1; x <= 1; ++x) {
 				for (y = -1; y <= 1; ++y) {
 					disp[0] = 1. * x; disp[1] = 1. * y;
-					primitive(DOF, disp, vel[i], vel[j], v_max);
+					primitive(disp, vel[i], vel[j], v_max);
 				}
 			}
 		}
 	}
+
+	// print the motion primivives
+	for(i = 0; i < n_primitives; ++i) {
+		print(&primitives[i]);
+	}
+
+	return 0;
+}
+
+void print(Mprim *m) {
+	int i;
+	printf("Motion Primitive:\n");
+	printf("Duration: %8.3f\n", m->time);
+	printf("Displacement: [%8.3f  %8.3f]\n", m->disp[0], m->disp[1]);
+	printf("Start/End Velocities: [%8.3f  %8.3f]  [%8.3f  %8.3f]\n", \
+			m->vel[0][0], m->vel[0][1], m->vel[1][0], m->vel[1][1]);
+	printf("Velocity command:\n");
+	for (i = 0; i < DOF; ++i)
+		printf("  %8.3f  %8.3f  %8.3f\n", m->cmd[i][0], m->cmd[i][1], m->cmd[i][2]);
+	printf("\n");
 }
 
 // generate a motion primitive from the given conditions
@@ -39,7 +72,7 @@ int main() {
 //     v_start - starting velocity
 //     v_end   - ending velocity
 //     v_max   - maximum permitted velocity
-void primitive(int dof, double disp[], double v_start[], double v_end[], double v_max[]) {
+void primitive(double disp[], double v_start[], double v_end[], double v_max[]) {
 	int i;
 	const bool log = false;
 	double time;
@@ -47,14 +80,14 @@ void primitive(int dof, double disp[], double v_start[], double v_end[], double 
 	const double teps = 1e-1; // no motion primitive < 0.1 sec
 
 	// check if the input is consistent
-	for (i = 0; i < dof; ++i) {
+	for (i = 0; i < DOF; ++i) {
 		assert(abs(v_start[i]) <= v_max[i]);
 		assert(abs(v_end[i]) <= v_max[i]);
 	}
 
 	// determine the duration of motion primitive
 	time = -1.;
-	for (i = 0; i < dof; ++i) {
+	for (i = 0; i < DOF; ++i) {
 		// TODO: the case when displacement is ZERO has not been handled properly
 		if (abs(disp[i]) < eps) {
 			if (log) printf("Displacement required for joint is ZERO\n");
@@ -78,22 +111,23 @@ void primitive(int dof, double disp[], double v_start[], double v_end[], double 
 	}
 
 	// fit a cubic equation to the path
-	double p[2][3]; // quadratic for the velocity
-	for (i = 0; i < dof; ++i) {
+	double p[DOF][3]; // quadratic for the velocity
+	for (i = 0; i < DOF; ++i) {
 		p[i][0] = v_start[i];
 		p[i][1] = 2*(3*disp[i]/(time*time) - (2*v_start[i] + v_end[i])/time);
 		p[i][2] = 3*(-2*disp[i]/(time*time*time) + (v_start[i]+v_end[i])/(time*time));
 	}
 
-	// print the results
-	printf("Motion Primitive:\n");
-	printf("Duration: %8.3f\n", time);
-	printf("Displacement: [%8.3f  %8.3f]\n", disp[0], disp[1]);
-	printf("Start/End velocities: [%8.3f  %8.3f]  [%8.3f  %8.3f]\n", v_start[0], v_start[1], v_end[0], v_end[1]);
-	printf("Velocity command:\n");
-	for (i = 0; i < dof; ++i)
-		printf("  %8.3f  %8.3f  %8.3f\n", p[i][0], p[i][1], p[i][2]);
-	printf("\n");
+	// store the results
+	Mprim *m = &primitives[n_primitives];
+	m->time = time;
+	m->disp[0] = disp[0]; m->disp[1] = disp[1];
+	for (i = 0; i < DOF; ++i) {
+		m->vel[i][0] = v_start[i]; m->vel[i][1] = v_end[i];
+		m->cmd[i][0] = p[i][0]; m->cmd[i][1] = p[i][1]; m->cmd[i][2] = p[i][2];
+	}
+	n_primitives++;
+
 }
 
 // function used in bisection search for minimizing time
@@ -132,7 +166,7 @@ double bisection_search(double ds, double td0, double td1, double tdm) {
 			return t_hi;
 		}
 	}
-	
+
 	if (log) printf("Iteration limit reached before convergence\n");
 	return t_hi;
 }
