@@ -3,4 +3,5 @@
 *.pdf
 *.mod
 *.o
-
+build/**
+*/build/**
